@@ -43,12 +43,42 @@ def log(s):
         pass
 
 
+def ver1(cache, repository):
+    log('upgrade to version 1: %s' % repository)
+    pool = pathjoin(repository, '.cubicpool')
+    verfile = pathjoin(pool, 'version')
+    for f in os.listdir(pool):
+        if f == 'version':
+            continue
+        n = pathjoin(f[:2], f[2:])
+        os.makedirs(pathjoin(pool, splitpath(n)[0]), exist_ok=True)
+        os.rename(pathjoin(pool, f), pathjoin(pool, n))
+    with open(verfile, 'w') as f:
+        f.write('1')
+    log('upgrade done')
+
+upgrades = [ver1]
+
+
 def commit(cache, repository):
     """将一个缓存文件夹的改动提交到库"""
     log('commit %s to %s ...' % (cache, repository))
     pool = pathjoin(repository, '.cubicpool')
+    verfile = pathjoin(pool, 'version')
     if not exists(pool):
         os.mkdir(pool)
+        with open(verfile, 'w') as f:
+            f.write(repr(len(upgrades)))
+
+    # 版本检查
+    if not exists(verfile):
+        version = 0
+    else:
+        with open(verfile) as f:
+            version = int(f.read())
+    for f in upgrades[version:]:
+        f(cache, repository)
+
     for dirpath, dirnames, filenames in os.walk(cache):
         for filename in filenames:
             # 对于每个文件
@@ -73,8 +103,10 @@ def commit(cache, repository):
                 # fall through
             # 这是一个新文件
             log('commit new file: %s' % cachepath)
-            hpath = pathjoin(pool, f_hash(cachepath))
+            h = f_hash(cachepath)
+            hpath = pathjoin(pool, h[:2], h[2:])
             if not exists(hpath):
+                os.makedirs(splitpath(hpath)[0], exist_ok=True)
                 copy(cachepath, hpath)
                 os.utime(cachepath, (getatime(cachepath), getmtime(hpath)))
             os.makedirs(splitpath(repopath)[0], exist_ok=True)
